@@ -63,7 +63,7 @@ namespace MastodonStats
             var max = statuses.First().Id;
             time = DateTime.Now;
             var startCount = max;
-            var startToday = 0;
+            var startToday = 0L;
             for (var i = 0; i < 400; i++)
             {
                 try
@@ -212,17 +212,26 @@ namespace MastodonStats
         static int i = 0;
         static void GetUsers()
         {
-            if (File.Exists($"local_accounts_list.json")){
-                var str = File.ReadAllText("local_accounts_list.json");
-                accountList.AddRange(JsonConvert.DeserializeObject<List<RegisteredAccount>>(str));
+            FileStream fs;
+            StreamWriter sw;
+            if (File.Exists($"local_accounts_list_making.json"))
+            {
+                var str = File.ReadAllText("local_accounts_list_making.json") + "]";
+                var tmp = JsonConvert.DeserializeObject<List<Account>>(str).Where(x => !x.AccountName.Contains("@")).Select(x => new RegisteredAccount(x)).ToList();
+                accountList.AddRange(tmp);
+                fs = File.Open("local_accounts_list_making.json", FileMode.Append);
+                sw = new StreamWriter(fs);
             }
-            var fs = File.OpenWrite("local_accounts_list_making.json");
-            var sw = new StreamWriter(fs);
-            sw.Write("[");
+            else
+            {
+                fs = File.OpenWrite("local_accounts_list_making.json");
+                sw = new StreamWriter(fs);
+                sw.Write("[");
+            }
 
             var manager = new Manager("imastodon.net", CId, CSec, Token);
-            string token = configText[4];
-            var n = 1; i = 0;
+            string token = configText[5];
+            var n = accountList.Last().Account.Id; i = 0;
 
             var httpc = new HttpClient();
             var followers = httpc.GetAsync($"https://imastodon.net/api/v1/accounts/23599/followers?access_token={token}");
@@ -252,7 +261,7 @@ namespace MastodonStats
                 }
             }));
             timer.Change(0, 1050);
-            while(n < 15000)
+            while(n < last)
             {
                 Debug.WriteLine($"{n}, {accountList.Count}");
                 Thread.Sleep(1050);
