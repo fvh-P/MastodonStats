@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Diagnostics;
+using System.Net.Http;
 using Newtonsoft.Json;
+using Mastonet.Entities;
+using System.Threading;
 
 namespace MastodonStats
 {
@@ -36,6 +39,9 @@ namespace MastodonStats
                         olddraw = true;
                     }
                     break;
+                case "/getusers":
+                    GetUsers();
+                    return;
                 default:
                     Update();
                     break;
@@ -201,6 +207,58 @@ namespace MastodonStats
             {
                 Debug.WriteLine($"{account.Account.AccountName}, {account.TootsToday}");
             }
+        }
+
+        static int i = 0;
+        static void GetUsers()
+        {
+            if (File.Exists($"local_accounts_list.json")){
+                var str = File.ReadAllText("local_accounts_list.json");
+                accountList.AddRange(JsonConvert.DeserializeObject<List<RegisteredAccount>>(str));
+            }
+            var fs = File.OpenWrite("local_accounts_list_making.json");
+            var sw = new StreamWriter(fs);
+            sw.Write("[");
+
+            var manager = new Manager("imastodon.net", CId, CSec, Token);
+            string token = configText[4];
+            var n = 1; i = 0;
+
+            var httpc = new HttpClient();
+            var followers = httpc.GetAsync($"https://imastodon.net/api/v1/accounts/23599/followers?access_token={token}");
+            var last = JsonConvert.DeserializeObject<List<Account>>(followers.Result.Content.ReadAsStringAsync().Result).OrderByDescending(x => x.Id).First().Id;
+
+            var timer = new Timer(new TimerCallback((s) => {
+                var response = httpc.GetAsync($"https://imastodon.net/api/v1/accounts/{n}?access_token={token}");
+                if (response.Result.StatusCode == System.Net.HttpStatusCode.OK)
+                {
+                    n++;
+                    var acc = JsonConvert.DeserializeObject<Account>(response.Result.Content.ReadAsStringAsync().Result);
+                    if (!acc.AccountName.Contains("@"))
+                    {
+                        accountList.Add(new RegisteredAccount(acc));
+                    }
+                    sw.WriteLine($"{JsonConvert.SerializeObject(acc)},");
+                }
+                else if((int)response.Result.StatusCode == 429)
+                {
+                    Debug.WriteLine($"{response.Result.StatusCode}, {response.Result.Content.ReadAsStringAsync().Result}");
+                    return;
+                }
+                else
+                {
+                    n++;
+                    Debug.WriteLine($"{response.Result.StatusCode}, {response.Result.Content.ReadAsStringAsync().Result}");
+                }
+            }));
+            timer.Change(0, 1050);
+            while(n < 15000)
+            {
+                Debug.WriteLine($"{n}, {accountList.Count}");
+                Thread.Sleep(1050);
+            }
+            var serialized = JsonConvert.SerializeObject(accountList);
+            File.WriteAllText("local_accounts_list.json", $"{serialized}\n");
         }
     }
 }
