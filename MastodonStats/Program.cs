@@ -7,6 +7,7 @@ using System.Net.Http;
 using Newtonsoft.Json;
 using Mastonet.Entities;
 using System.Threading;
+using IronPython.Hosting;
 
 namespace MastodonStats
 {
@@ -34,7 +35,15 @@ namespace MastodonStats
                 case "/drawonly":
                     if (args.Length >= 2 && File.Exists($"accounts{args[1]}.json")) {
                         var str = File.ReadAllText($"accounts{args[1]}.json");
-                        accountList.AddRange(JsonConvert.DeserializeObject<List<RegisteredAccount>>(str));
+                        accountList.AddRange(JsonConvert.DeserializeObject<IEnumerable<RegisteredAccount>>(str));
+                        /*
+                        var data = accountList.Select(d => d.TootsToday).ToArray();
+                        var engine = Python.CreateEngine();
+                        dynamic scope = engine.ExecuteFile("DrawHistogram.py");
+                        scope.draw_iron(data);
+                        return;
+                        /*/
+                        
                         time = new FileInfo($"accounts{args[1]}.json").LastWriteTime.Date;
                         olddraw = true;
                     }
@@ -42,24 +51,28 @@ namespace MastodonStats
                 case "/getusers":
                     GetUsers();
                     return;
+                case "/makescatter":
+                    (var x, var y) = MakeScatter();
+                    Draw_CallPython($"DrawScatter.py {x} {y}");
+                    return;
                 default:
                     Update();
                     break;
             }
 
-            var pyArg = (olddraw ? $"old {time.AddDays(-1).ToShortDateString()} " : $"{time.ToShortDateString()} {time.ToShortTimeString()} ") + string.Join(" ", accountList.Select(x => x.TootsToday.ToString()));
+            var pyArg = "DrawHistogram.py " + (olddraw ? $"old {time.AddDays(-1).ToShortDateString()} " : $"{time.ToShortDateString()} {time.ToShortTimeString()} ") + string.Join(" ", accountList.Select(x => x.TootsToday.ToString()));
             Draw_CallPython(pyArg);
         }
 
         static void Draw_CallPython(string pyArg)
         {
-            Process.Start("python", $"DrawHistogram.py {pyArg}");
+            Process.Start("python", $"{pyArg}");
         }
 
         static void NewDay()
         {
             var manager = new Manager("imastodon.net", CId, CSec, Token);
-            var statuses = manager.Client.GetPublicTimeline(limit: 40, local: true).Result.ToArray();
+            var statuses = manager.Client.GetPublicTimeline(limit: 40, local: true).Result;
             var max = statuses.First().Id;
             time = DateTime.Now;
             var startCount = max;
@@ -68,7 +81,7 @@ namespace MastodonStats
             {
                 try
                 {
-                    var tl = manager.Client.GetPublicTimeline(limit: 40, maxId: max, local: true).Result.ToArray();
+                    var tl = manager.Client.GetPublicTimeline(limit: 40, maxId: max, local: true).Result;
                     Debug.WriteLine($"{i}, {tl.Last().Id} -> {tl.First().Id}");
                     if (TimeZoneInfo.ConvertTimeFromUtc(tl.Last().CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == DateTime.Today.ToShortDateString())
                     {
@@ -80,7 +93,7 @@ namespace MastodonStats
                     }
                     else
                     {
-                        var todaysStatus = tl.Where(x => TimeZoneInfo.ConvertTimeFromUtc(x.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == DateTime.Today.ToShortDateString()).ToArray();
+                        var todaysStatus = tl.Where(x => TimeZoneInfo.ConvertTimeFromUtc(x.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == DateTime.Today.ToShortDateString());
                         foreach (var status in todaysStatus)
                         {
                             accountList.Update(status);
@@ -107,20 +120,20 @@ namespace MastodonStats
         static void EndDay()
         {
             var str = File.ReadAllText("accounts.json");
-            accountList.AddRange(JsonConvert.DeserializeObject<List<RegisteredAccount>>(str));
+            accountList.AddRange(JsonConvert.DeserializeObject<IEnumerable<RegisteredAccount>>(str));
 
             var manager = new Manager("imastodon.net", CId, CSec, Token);
-            var statuses = manager.Client.GetPublicTimeline(limit: 40, local: true).Result.ToArray();
+            var statuses = manager.Client.GetPublicTimeline(limit: 40, local: true).Result;
             var max = statuses.First().Id;
             var yesterday = DateTime.Today.AddDays(-1);
-            time = new DateTime(yesterday.Year, yesterday.Month, yesterday.Day, 0, 0, 0);
+            time = DateTime.Now.Date;
             var startCount = max;
-            var endCount = int.Parse(File.ReadAllText("PreviousIds.dat"));
+            var endCount = long.Parse(File.ReadAllText("PreviousIds.dat"));
             for (var i = 0; i < 400; i++)
             {
                 try
                 {
-                    var tl = manager.Client.GetPublicTimeline(limit: 40, maxId: max, local: true).Result.ToArray();
+                    var tl = manager.Client.GetPublicTimeline(limit: 40, maxId: max, local: true).Result;
                     Debug.WriteLine($"{i}, {tl.Last().Id} -> {tl.First().Id}");
 
                     if(tl.Last().Id > endCount)
@@ -150,7 +163,7 @@ namespace MastodonStats
             }
             var serialized = JsonConvert.SerializeObject(accountList);
             File.WriteAllText("accounts.json", $"{serialized}\n");
-            File.Move("accounts.json", $"accounts{yesterday.Year}{yesterday.Month}{yesterday.Day}.json");
+            File.Move("accounts.json", $"accounts{yesterday.ToString("yyyyMMdd")}.json");
             File.WriteAllText("PreviousIds.dat", $"{startCount}");
 
             foreach (var account in accountList.OrderBy(x => x.TootsToday))
@@ -162,18 +175,18 @@ namespace MastodonStats
         static void Update()
         {
             var str = File.ReadAllText("accounts.json");
-            accountList.AddRange(JsonConvert.DeserializeObject<List<RegisteredAccount>>(str));
+            accountList.AddRange(JsonConvert.DeserializeObject<IEnumerable<RegisteredAccount>>(str));
 
             var manager = new Manager("imastodon.net", CId, CSec, Token);
-            var statuses = manager.Client.GetPublicTimeline(limit: 40, local: true).Result.ToArray();
+            var statuses = manager.Client.GetPublicTimeline(limit: 40, local: true).Result;
             var max = statuses.First().Id;
             time = DateTime.Now;
             var startCount = max;
-            var endCount = int.Parse(File.ReadAllText("PreviousIds.dat"));
+            var endCount = long.Parse(File.ReadAllText("PreviousIds.dat"));
             for(var i = 0; i < 400; i++) {
                 try
                 {
-                    var tl = manager.Client.GetPublicTimeline(limit: 40, maxId: max, local: true).Result.ToArray();
+                    var tl = manager.Client.GetPublicTimeline(limit: 40, maxId: max, local: true).Result;
                     Debug.WriteLine($"{i}, {tl.Last().Id} -> {tl.First().Id}");
 
                     if (tl.Last().Id > endCount)
@@ -209,7 +222,20 @@ namespace MastodonStats
             }
         }
 
-        static int i = 0;
+        static (string, string) MakeScatter()
+        {
+            var str = File.ReadAllText("local_accounts_list.json");
+            var list = JsonConvert.DeserializeObject<IEnumerable<Account>>(str).Where(a => a.StatusesCount > 0);
+
+            time = DateTime.Today;
+            var dateCount = list.Select(a => (time - a.CreatedAt.Date).Days.ToString()).ToArray();
+            var postCount = list.Select(a => a.StatusesCount.ToString()).ToArray();
+            var x = "[" + string.Join(",", dateCount) + "]";
+            var y = "[" + string.Join(",", postCount) + "]";
+
+            return (x, y);
+        }
+
         static void GetUsers()
         {
             FileStream fs;
@@ -217,7 +243,7 @@ namespace MastodonStats
             if (File.Exists($"local_accounts_list_making.json"))
             {
                 var str = File.ReadAllText("local_accounts_list_making.json") + "]";
-                var tmp = JsonConvert.DeserializeObject<List<Account>>(str).Where(x => !x.AccountName.Contains("@")).Select(x => new RegisteredAccount(x)).ToList();
+                var tmp = JsonConvert.DeserializeObject<IEnumerable<Account>>(str).Where(x => !x.AccountName.Contains("@")).Select(x => new RegisteredAccount(x));
                 accountList.AddRange(tmp);
                 fs = File.Open("local_accounts_list_making.json", FileMode.Append);
                 sw = new StreamWriter(fs);
@@ -231,11 +257,11 @@ namespace MastodonStats
 
             var manager = new Manager("imastodon.net", CId, CSec, Token);
             string token = configText[5];
-            var n = accountList.Last().Account.Id; i = 0;
+            var n = accountList.Last().Account.Id;
 
             var httpc = new HttpClient();
             var followers = httpc.GetAsync($"https://imastodon.net/api/v1/accounts/23599/followers?access_token={token}");
-            var last = JsonConvert.DeserializeObject<List<Account>>(followers.Result.Content.ReadAsStringAsync().Result).OrderByDescending(x => x.Id).First().Id;
+            var last = JsonConvert.DeserializeObject<IEnumerable<Account>>(followers.Result.Content.ReadAsStringAsync().Result).OrderByDescending(x => x.Id).First().Id;
 
             var timer = new Timer(new TimerCallback((s) => {
                 var response = httpc.GetAsync($"https://imastodon.net/api/v1/accounts/{n}?access_token={token}");
