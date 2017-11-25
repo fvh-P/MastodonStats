@@ -10,15 +10,15 @@ namespace MastodonStats
         [JsonProperty("acc")]
         public Account Account { get; set; }
         [JsonProperty("count")]
-        public int TootsToday { get; set; }
+        public long TootsToday { get; set; }
         public RegisteredAccount(Account account)
         {
             Account = account;
-            TootsToday = 0;
+            TootsToday = 1;
         }
-        public void AddStatus(Status s)
+        public long AddStatus(Status s)
         {
-            TootsToday++;
+            return ++TootsToday;
         }
     }
 }

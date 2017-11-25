@@ -93,7 +93,7 @@ namespace MastodonStats
                     }
                     else
                     {
-                        var todaysStatus = tl.Where(x => TimeZoneInfo.ConvertTimeFromUtc(x.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == DateTime.Today.ToShortDateString());
+                        var todaysStatus = tl.AsParallel().Where(x => TimeZoneInfo.ConvertTimeFromUtc(x.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == DateTime.Today.ToShortDateString());
                         foreach (var status in todaysStatus)
                         {
                             accountList.Update(status);
@@ -121,36 +121,55 @@ namespace MastodonStats
         {
             var str = File.ReadAllText("accounts.json");
             accountList.AddRange(JsonConvert.DeserializeObject<IEnumerable<RegisteredAccount>>(str));
-
+            var tmpList = new RegisteredAccountList();
             var manager = new Manager("imastodon.net", CId, CSec, Token);
             var statuses = manager.Client.GetPublicTimeline(limit: 40, local: true).Result;
             var max = statuses.First().Id;
+            var endCount = long.Parse(File.ReadAllText("PreviousIds.dat"));
+            var from = TimeZoneInfo.ConvertTimeFromUtc(manager.Client.GetStatus(endCount).Result.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time"));
             var yesterday = DateTime.Today.AddDays(-1);
             time = DateTime.Now.Date;
             var startCount = max;
-            var endCount = long.Parse(File.ReadAllText("PreviousIds.dat"));
-            for (var i = 0; i < 400; i++)
+            for (var i = 0; i < 600; i++)
             {
                 try
                 {
                     var tl = manager.Client.GetPublicTimeline(limit: 40, maxId: max, local: true).Result;
-                    Debug.WriteLine($"{i}, {tl.Last().Id} -> {tl.First().Id}");
+                    Debug.WriteLine($"{i}, {tl.Last().Id} ({TimeZoneInfo.ConvertTimeFromUtc(tl.Last().CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time"))})" +
+                        $" -> {tl.First().Id} ({TimeZoneInfo.ConvertTimeFromUtc(tl.First().CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time"))})");
 
-                    if(tl.Last().Id > endCount)
+                    if (TimeZoneInfo.ConvertTimeFromUtc(tl.Last().CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToString("yyyyMMdd") == time.ToString("yyyyMMdd"))
                     {
-                        var yesterdaysStatus = tl.Where(x => TimeZoneInfo.ConvertTimeFromUtc(x.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == yesterday.ToShortDateString());
+                        max = tl.Last().Id - 1;
+                        continue;
+                    }
+                    else if(tl.Last().Id > endCount)
+                    {
+                        var yesterdaysStatus = tl.AsParallel().Where(x => TimeZoneInfo.ConvertTimeFromUtc(x.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == yesterday.ToShortDateString());
                         foreach (var status in yesterdaysStatus)
                         {
-                            accountList.Update(status);
+                            tmpList.Update(status);
                         }
                         max = tl.Last().Id - 1;
+                        if(manager.Client.GetStatus(tl.Last().Id).Result.CreatedAt.ToShortDateString() == yesterday.AddDays(-1).ToShortDateString())
+                        {
+                            var serialized_tmp = JsonConvert.SerializeObject(tmpList);
+                            File.WriteAllText($"accounts{yesterday.ToString("yyyyMMdd")}.json", $"{serialized_tmp}\n");
+                            tmpList.Clear();
+                            yesterday = yesterday.AddDays(-1);
+                            yesterdaysStatus = tl.AsParallel().Where(x => TimeZoneInfo.ConvertTimeFromUtc(x.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == yesterday.ToShortDateString());
+                            foreach (var status in yesterdaysStatus)
+                            {
+                                tmpList.Update(status);
+                            }
+                        }
                     }
                     else
                     {
-                        var yesterdaysStatus = tl.Where(x => x.Id > endCount && TimeZoneInfo.ConvertTimeFromUtc(x.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == yesterday.ToShortDateString());
+                        var yesterdaysStatus = tl.AsParallel().Where(x => x.Id > endCount && TimeZoneInfo.ConvertTimeFromUtc(x.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == from.ToShortDateString());
                         foreach (var status in yesterdaysStatus)
                         {
-                            accountList.Update(status);
+                            tmpList.Update(status);
                         }
                         max = tl.Last().Id - 1;
                         break;
@@ -161,6 +180,7 @@ namespace MastodonStats
                     Debug.WriteLine(e.Message);
                 }
             }
+            accountList.AddRange(tmpList);
             var serialized = JsonConvert.SerializeObject(accountList);
             File.WriteAllText("accounts.json", $"{serialized}\n");
             File.Move("accounts.json", $"accounts{yesterday.ToString("yyyyMMdd")}.json");
@@ -199,7 +219,7 @@ namespace MastodonStats
                     }
                     else
                     {
-                        var notCountedStatus = tl.Where(x => x.Id > endCount);
+                        var notCountedStatus = tl.AsParallel().Where(x => x.Id > endCount);
                         foreach (var status in notCountedStatus)
                         {
                             accountList.Update(status);

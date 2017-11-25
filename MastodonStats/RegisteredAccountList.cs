@@ -10,11 +10,10 @@ namespace MastodonStats
         public RegisteredAccountList(int capacity): base(capacity) { }
         public void Update(Status status)
         {
-            if(!this.Where(x => x.Account.AccountName == status.Account.AccountName).Any())
+            if (Find(x => x.Account.AccountName == status.Account.AccountName)?.AddStatus(status) == null)
             {
                 Add(new RegisteredAccount(status.Account));
             }
-            this.Where(x => x.Account.AccountName == status.Account.AccountName).First().AddStatus(status);
         }
     }
 }
