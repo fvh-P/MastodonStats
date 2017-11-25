@@ -180,6 +180,11 @@ namespace MastodonStats
                     Debug.WriteLine(e.Message);
                 }
             }
+            foreach(var a in accountList)
+            {
+                a.TootsToday += tmpList.Find(x => x.Account.AccountName == a.Account.AccountName).TootsToday;
+                tmpList = (RegisteredAccountList)tmpList.Where(x => x.Account.AccountName != a.Account.AccountName).ToList();
+            }
             accountList.AddRange(tmpList);
             var serialized = JsonConvert.SerializeObject(accountList);
             File.WriteAllText("accounts.json", $"{serialized}\n");
