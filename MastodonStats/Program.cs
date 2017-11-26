@@ -166,7 +166,7 @@ namespace MastodonStats
                     }
                     else
                     {
-                        var yesterdaysStatus = tl.AsParallel().Where(x => x.Id > endCount && TimeZoneInfo.ConvertTimeFromUtc(x.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == from.ToShortDateString());
+                        var yesterdaysStatus = tl.AsParallel().Where(x => x.Id > endCount && TimeZoneInfo.ConvertTimeFromUtc(x.CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == yesterday.ToShortDateString());
                         foreach (var status in yesterdaysStatus)
                         {
                             tmpList.Update(status);
@@ -182,8 +182,12 @@ namespace MastodonStats
             }
             foreach(var a in accountList)
             {
-                a.TootsToday += tmpList.Find(x => x.Account.AccountName == a.Account.AccountName).TootsToday;
-                tmpList = (RegisteredAccountList)tmpList.Where(x => x.Account.AccountName != a.Account.AccountName).ToList();
+                var tmp = tmpList.Find(x => x.Account.AccountName == a.Account.AccountName);
+                if (tmp != null)
+                {
+                    a.TootsToday += tmp.TootsToday;
+                    tmpList.RemoveAll(x => x.Account.AccountName == a.Account.AccountName);
+                }
             }
             accountList.AddRange(tmpList);
             var serialized = JsonConvert.SerializeObject(accountList);
