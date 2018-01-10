@@ -82,7 +82,8 @@ namespace MastodonStats
                 try
                 {
                     var tl = manager.Client.GetPublicTimeline(limit: 40, maxId: max, local: true).Result;
-                    Debug.WriteLine($"{i}, {tl.Last().Id} -> {tl.First().Id}");
+                    Debug.WriteLine($"{i}, {tl.Last().Id} ({TimeZoneInfo.ConvertTimeFromUtc(tl.Last().CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time"))})" +
+                        $" -> {tl.First().Id} ({TimeZoneInfo.ConvertTimeFromUtc(tl.First().CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time"))})");
                     if (TimeZoneInfo.ConvertTimeFromUtc(tl.Last().CreatedAt, TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time")).ToShortDateString() == DateTime.Today.ToShortDateString())
                     {
                         foreach (var status in tl)
@@ -119,8 +120,11 @@ namespace MastodonStats
 
         static void EndDay()
         {
-            var str = File.ReadAllText("accounts.json");
-            accountList.AddRange(JsonConvert.DeserializeObject<IEnumerable<RegisteredAccount>>(str));
+            var str = File.Exists("accounts.json") ? File.ReadAllText("accounts.json") : null;
+            if (str != null)
+            {
+                accountList.AddRange(JsonConvert.DeserializeObject<IEnumerable<RegisteredAccount>>(str));
+            }
             var tmpList = new RegisteredAccountList();
             var manager = new Manager("imastodon.net", CId, CSec, Token);
             var statuses = manager.Client.GetPublicTimeline(limit: 40, local: true).Result;

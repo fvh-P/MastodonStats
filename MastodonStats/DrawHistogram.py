@@ -37,8 +37,8 @@ def draw_old(argv):
   
   fig, ax = plt.subplots()
   edges = range(0, (maximum // 100 + 1) * 100, 10)
-  _, bins, patches = ax.hist(data, bins=edges)
-  #_, bins, patches = ax.hist(data, bins=20)
+  #_, bins, patches = ax.hist(data, bins=edges)
+  _, bins, patches = ax.hist(data, bins=n)
   ax.set_ylim([0, 100])
   #ax.set_xlim([0, (maximum // 100 + 1) * 100])
   plt.title('アイマストドンユーザ分布( ' + date + ' )')
